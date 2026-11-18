@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <application android:label="RAM Watch" android:icon="@drawable/ic_ram"
+    <application android:label="RAM Watch" android:icon="@drawable/ic_launcher" android:roundIcon="@drawable/ic_launcher"
         android:allowBackup="false" android:theme="@android:style/Theme.Material.NoActionBar">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
