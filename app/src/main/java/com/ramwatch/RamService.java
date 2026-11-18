@@ -65,20 +65,31 @@ public class RamService extends Service {
     }
 
     private void build() {
+        SharedPreferences p = getSharedPreferences("p", 0);
+        java.util.ArrayList<String> parts = new java.util.ArrayList<>();
         am.getMemoryInfo(mi);
-        long total = mi.totalMem, avail = mi.availMem, used = total - avail;
-        int usedPct = (int) (used * 100 / total);
-        nb.setContentTitle("Free RAM: " + gb(avail) + " (" + (100 - usedPct) + "%)")
-          .setContentText("Used " + gb(used) + " of " + gb(total) + (mi.lowMemory ? "  ⚠ LOW" : ""))
-          .setProgress(100, usedPct, false);
+        long total = mi.totalMem, avail = mi.availMem;
+        int usedPct = (int) ((total - avail) * 100 / total);
+        if (Stats.on(p, 0)) parts.add("RAM " + Stats.gb(avail) + " free (" + (100 - usedPct) + "%)" + (mi.lowMemory ? " ⚠" : ""));
+        if (Stats.on(p, 1) || Stats.on(p, 3)) {
+            Intent b = Stats.battery(this);
+            if (b != null) {
+                if (Stats.on(p, 1)) parts.add("Battery " + Stats.batPct(b) + "%" + (Stats.charging(b) ? " ⚡" : ""));
+                if (Stats.on(p, 3)) parts.add("Batt " + Stats.fmt1(Stats.batTemp(b)) + "°C");
+            }
+        }
+        if (Stats.on(p, 2)) { int l = Stats.cpuLoad(); if (l >= 0) parts.add("CPU " + l + "%"); }
+        if (Stats.on(p, 4)) { float t = Stats.cpuTemp(); if (t > 0) parts.add("CPU " + Stats.fmt1(t) + "°C"); }
+        if (Stats.on(p, 5)) { long f = Stats.avgFreqMHz(); if (f > 0) parts.add(f + " MHz"); }
+        if (Stats.on(p, 6)) parts.add("Storage " + Stats.gb(Stats.storage()[1]) + " free");
+        if (Stats.on(p, 7)) parts.add("Up " + Stats.uptime());
+        String title = parts.isEmpty() ? "RAM Watch running" : parts.remove(0);
+        String text = android.text.TextUtils.join("  •  ", parts);
+        nb.setContentTitle(title).setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text));
+        if (Stats.on(p, 0)) nb.setProgress(100, usedPct, false); else nb.setProgress(0, 0, false);
     }
 
     private void update() { build(); nm.notify(ID, nb.build()); }
-
-    static String gb(long b) {
-        double g = b / 1073741824.0;
-        return g >= 1 ? String.format("%.2f GB", g) : String.format("%d MB", b / 1048576);
-    }
 
     @Override public void onDestroy() {
         running = false;
