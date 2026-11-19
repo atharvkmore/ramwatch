@@ -3,6 +3,9 @@ package com.ramwatch;
 import android.content.*;
 import android.opengl.*;
 import android.os.*;
+import android.net.*;
+import android.net.wifi.*;
+import android.telephony.*;
 import java.io.*;
 import java.util.Locale;
 
@@ -11,9 +14,23 @@ final class Stats {
     static final String[][] OPTS = {
         {"n_ram", "RAM free", "1"}, {"n_bat", "Battery %", "1"}, {"n_cpu", "CPU load", "1"},
         {"n_bt", "Battery temperature", "0"}, {"n_ct", "CPU temperature", "0"},
-        {"n_cf", "CPU clock (average)", "0"}, {"n_sto", "Storage free", "0"}, {"n_up", "Uptime", "0"}};
+        {"n_cf", "CPU clock (average)", "0"}, {"n_sto", "Storage free", "0"}, {"n_up", "Uptime", "0"},
+        {"n_net", "Network speed (down / up)", "0"}, {"n_wifi", "Wi-Fi signal", "0"}, {"n_cell", "Cellular signal", "0"}};
 
-    static boolean on(SharedPreferences p, int i) { return p.getBoolean(OPTS[i][0], "1".equals(OPTS[i][2])); }
+    static final String[] SB = {"App icon (no value)", "RAM used %", "RAM free (GB)", "CPU load %",
+        "Battery temperature", "Download speed", "Download + upload speed"};
+
+    // Floating overlay items
+    static final String[][] OV = {
+        {"o_fps", "FPS (screen pace)", "1"}, {"o_cpu", "CPU load", "1"}, {"o_ram", "RAM used", "1"},
+        {"o_gpu", "GPU load", "0"}, {"o_ct", "CPU temperature", "0"}, {"o_bat", "Battery %", "0"},
+        {"o_bt", "Battery temperature", "0"}, {"o_net", "Download speed", "0"}, {"o_clk", "Clock", "0"}};
+
+    static final String[] OV_POS = {"Top left", "Top centre", "Top right"};
+
+    static boolean on(SharedPreferences p, int i) { return on(p, OPTS, i); }
+
+    static boolean on(SharedPreferences p, String[][] o, int i) { return p.getBoolean(o[i][0], "1".equals(o[i][2])); }
 
     static String read(String path) {
         try (BufferedReader r = new BufferedReader(new FileReader(path))) {
@@ -180,4 +197,81 @@ final class Stats {
     }
 
     static String fmt1(float f) { return String.format(Locale.US, "%.1f", f); }
+
+    // ---------- Network ----------
+    static final class Net {
+        long rx = -1, tx = -1, t, down, up; // bytes per second
+        void sample() {
+            long r = TrafficStats.getTotalRxBytes(), x = TrafficStats.getTotalTxBytes(), n = SystemClock.elapsedRealtime();
+            if (r < 0 || x < 0) return;
+            if (rx >= 0 && n > t) { down = Math.max(0, (r - rx) * 1000 / (n - t)); up = Math.max(0, (x - tx) * 1000 / (n - t)); }
+            rx = r; tx = x; t = n;
+        }
+    }
+
+    static String speed(long b) {
+        if (b < 1024) return b + " B/s";
+        if (b < 1048576) return (b / 1024) + " KB/s";
+        return fmt1(b / 1048576f) + " MB/s";
+    }
+
+    static String shortSpeed(long b) {
+        if (b < 1024) return b + "B";
+        if (b < 1048576) return (b / 1024) + "K";
+        return fmt1(b / 1048576f) + "M";
+    }
+
+    static NetworkCapabilities caps(Context c) {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) c.getSystemService(Context.CONNECTIVITY_SERVICE);
+            Network n = cm.getActiveNetwork();
+            return n == null ? null : cm.getNetworkCapabilities(n);
+        } catch (Throwable e) { return null; }
+    }
+
+    static String netType(NetworkCapabilities nc) {
+        if (nc == null) return "Offline";
+        if (nc.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return "VPN";
+        if (nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return "Wi-Fi";
+        if (nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) return "Mobile data";
+        if (nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) return "Ethernet";
+        return "Other";
+    }
+
+    // {rssi dBm, level 0-4, link Mbps, frequency MHz} or null when not on Wi-Fi
+    @SuppressWarnings("deprecation")
+    static int[] wifi(Context c) {
+        try {
+            NetworkCapabilities nc = caps(c);
+            if (nc == null || !nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return null;
+            WifiInfo i = ((WifiManager) c.getApplicationContext().getSystemService(Context.WIFI_SERVICE)).getConnectionInfo();
+            if (i == null) return null;
+            int rssi = i.getRssi();
+            return new int[]{rssi, WifiManager.calculateSignalLevel(rssi, 5), i.getLinkSpeed(), i.getFrequency()};
+        } catch (Throwable e) { return null; }
+    }
+
+    // {level 0-4, dBm or Integer.MAX_VALUE}, or null
+    static int[] cell(Context c) {
+        if (Build.VERSION.SDK_INT < 28) return null;
+        try {
+            SignalStrength ss = ((TelephonyManager) c.getSystemService(Context.TELEPHONY_SERVICE)).getSignalStrength();
+            if (ss == null) return null;
+            int dbm = Integer.MAX_VALUE;
+            if (Build.VERSION.SDK_INT >= 29)
+                for (CellSignalStrength cs : ss.getCellSignalStrengths()) { int d = cs.getDbm(); if (d != Integer.MAX_VALUE) { dbm = d; break; } }
+            return new int[]{ss.getLevel(), dbm};
+        } catch (Throwable e) { return null; }
+    }
+
+    static String operator(Context c) {
+        try { return ((TelephonyManager) c.getSystemService(Context.TELEPHONY_SERVICE)).getNetworkOperatorName(); }
+        catch (Throwable e) { return null; }
+    }
+
+    static String bars(int level) {
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < 4; i++) s.append(i < level ? "▮" : "▯");
+        return s.toString();
+    }
 }
