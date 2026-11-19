@@ -1,4 +1,8 @@
 plugins { id 'com.android.application' }
+
+// Release signing comes from CI secrets; without them builds fall back to the debug key.
+def ks = System.getenv('RW_KEYSTORE')
+
 android {
     namespace 'com.ramwatch'
     compileSdk 35
@@ -6,9 +10,28 @@ android {
         applicationId 'com.ramwatch'
         minSdk 24
         targetSdk 35
-        versionCode 1
-        versionName '1.0'
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger())
+        versionName '1.0.0'
+        // F-Droid builds with -Pfdroid: suggestion cards compiled out
+        buildConfigField 'boolean', 'SUGGESTIONS', project.hasProperty('fdroid') ? 'false' : 'true'
     }
-    buildTypes { release { minifyEnabled true; shrinkResources true; signingConfig signingConfigs.debug } }
+    buildFeatures { buildConfig true }
+    signingConfigs {
+        release {
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('RW_STORE_PASS')
+                keyAlias System.getenv('RW_KEY_ALIAS')
+                keyPassword System.getenv('RW_KEY_PASS')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            signingConfig ks ? signingConfigs.release : signingConfigs.debug
+        }
+    }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
