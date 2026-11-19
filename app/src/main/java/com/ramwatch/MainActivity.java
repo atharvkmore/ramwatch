@@ -11,6 +11,7 @@ import android.os.*;
 import android.util.DisplayMetrics;
 import android.view.*;
 import android.widget.*;
+import java.net.URLEncoder;
 
 public class MainActivity extends Activity {
     static final int BLUE = 0xFF0A84FF, GREEN = 0xFF30D158, ORANGE = 0xFFFF9F0A, PURPLE = 0xFFBF5AF2,
@@ -36,6 +37,9 @@ public class MainActivity extends Activity {
             vNetType, vOp, vBwD, vBwU, vRx, vTx, vWifiSig, vWifiLink, vWifiFreq, vCellSig;
     private TextView[] vCore;
     private Switch ovSwitch, sbtSwitch;
+    private LinearLayout sugCard;
+    private TextView sugTitle, sugText;
+    private String sugId, sugQuery;
     private Tile tRam, tCpu, tBat, tNet, tBatLvl, tBatTemp, tDown, tUp;
 
     private final Runnable tick = new Runnable() {
@@ -155,6 +159,8 @@ public class MainActivity extends Activity {
         r = hrow();
         tBat = tile(r, "Battery", GREEN, true);
         tNet = tile(r, "Network", PURPLE, false);
+
+        if (BuildConfig.SUGGESTIONS) buildSuggestion();
 
         LinearLayout c = card("At a glance");
         vSto = row(c, "Storage free");
@@ -280,6 +286,27 @@ public class MainActivity extends Activity {
 
         c = card("Update interval");
         radios(c, "iv", new String[]{"1 second", "2 seconds (recommended)", "5 seconds (battery saver)"}, 2, new int[]{1, 2, 5});
+
+        if (BuildConfig.SUGGESTIONS) {
+            c = card("Suggestions");
+            CheckBox sg = new CheckBox(this);
+            sg.setText("Show helpful product suggestions when a problem is detected");
+            sg.setTextColor(Color.WHITE);
+            sg.setButtonTintList(ColorStateList.valueOf(BLUE));
+            sg.setChecked(p.getBoolean("sugg", true));
+            sg.setOnCheckedChangeListener((x, on) -> p.edit().putBoolean("sugg", on).apply());
+            c.addView(sg);
+            c.addView(text("At most one card, only on the Home tab. Links may earn us a small commission at no cost to you. Nothing is tracked.", 12, DIM, false));
+        }
+
+        c = card("About");
+        row(c, "Version", BuildConfig.VERSION_NAME);
+        row(c, "Licence", "GPL-3.0 (open source)");
+        link(c, "View source code on GitHub", Config.REPO);
+        link(c, "Report a bug or request a feature", Config.ISSUES);
+        link(c, "Need a custom app or overlay? Get in touch", Config.CUSTOM_APP);
+        if (!Config.SUPPORT_URL.isEmpty()) link(c, "Support the developer", Config.SUPPORT_URL);
+        c.addView(text("Free forever. No ads, no subscriptions, no tracking.", 12, DIM, false));
     }
 
     // ---------- Live refresh ----------
@@ -309,6 +336,7 @@ public class MainActivity extends Activity {
         }
         net.sample();
         set(tNet, Stats.shortSpeed(net.down) + "/s", "↑ " + Stats.speed(net.up), speedPct(net.down));
+        if (sugCard != null) updateSuggestion();
         long[] s = Stats.storage();
         vSto.setText(Stats.gb(s[1]) + " / " + Stats.gb(s[0]));
         vUp.setText(Stats.uptime());
@@ -501,6 +529,94 @@ public class MainActivity extends Activity {
             g.addView(b);
             if (v == cur) g.check(b.getId());
         }
+    }
+
+    // ---------- Helpful suggestions (one card max, only when a real problem is seen) ----------
+
+    private void buildSuggestion() {
+        TextView hdr = text("SUGGESTION", 12, DIM, true);
+        hdr.setLetterSpacing(0.08f);
+        hdr.setPadding(dp(14), dp(20), 0, dp(6));
+        sugCard = new LinearLayout(this);
+        sugCard.setOrientation(LinearLayout.VERTICAL);
+        sugCard.setPadding(dp(16), dp(12), dp(16), dp(12));
+        sugCard.setBackground(glass(22, 0x26FF9F0A));
+        sugCard.addView(hdr);
+        sugTitle = text("", 16, Color.WHITE, true);
+        sugText = text("", 13, DIM, false);
+        sugText.setPadding(0, dp(4), 0, dp(10));
+        sugCard.addView(sugTitle);
+        sugCard.addView(sugText);
+        LinearLayout btns = new LinearLayout(this);
+        TextView view = text("View options", 14, Color.BLACK, true);
+        view.setGravity(Gravity.CENTER);
+        view.setPadding(dp(14), dp(8), dp(14), dp(8));
+        GradientDrawable vb = new GradientDrawable();
+        vb.setColor(ORANGE);
+        vb.setCornerRadius(dp(16));
+        view.setBackground(vb);
+        view.setOnClickListener(v -> {
+            try {
+                String url = "https://www.amazon.in/s?k=" + URLEncoder.encode(sugQuery, "UTF-8")
+                        + (Config.AMAZON_TAG.isEmpty() ? "" : "&tag=" + Config.AMAZON_TAG);
+                startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+            } catch (Exception ignored) { }
+        });
+        btns.addView(view);
+        TextView no = text("Not useful", 14, DIM, false);
+        no.setPadding(dp(16), dp(8), dp(8), dp(8));
+        no.setOnClickListener(v -> { p.edit().putLong("dis_" + sugId, System.currentTimeMillis()).apply(); updateSuggestion(); });
+        btns.addView(no);
+        TextView off = text("Hide all", 14, DIM, false);
+        off.setPadding(dp(8), dp(8), dp(8), dp(8));
+        off.setOnClickListener(v -> { p.edit().putBoolean("sugg", false).apply(); updateSuggestion(); });
+        btns.addView(off);
+        sugCard.addView(btns);
+        sugCard.addView(text("We may earn a commission from these links.", 11, DIM, false));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = dp(12);
+        page.addView(sugCard, lp);
+        sugCard.setVisibility(View.GONE);
+    }
+
+    private boolean fresh(String id) {
+        return System.currentTimeMillis() - p.getLong("dis_" + id, 0) > 30L * 86_400_000L;
+    }
+
+    private void updateSuggestion() {
+        String id = null, title = null, body = null, q = null;
+        if (p.getBoolean("sugg", true)) {
+            Intent bi = Stats.battery(this);
+            int health = bi == null ? -1 : bi.getIntExtra(BatteryManager.EXTRA_HEALTH, -1);
+            int n = p.getInt("sig_n", 0);
+            if (System.currentTimeMillis() - p.getLong("sig_hot", 0) < 3L * 86_400_000L && fresh("hot")) {
+                id = "hot"; title = "Your phone has been running hot";
+                body = "Battery stayed above 42°C for 5+ minutes. A clip-on cooling fan keeps games smooth and protects the battery.";
+                q = "mobile cooling fan for gaming";
+            } else if ((health == BatteryManager.BATTERY_HEALTH_DEAD || health == BatteryManager.BATTERY_HEALTH_OVERHEAT
+                    || health == BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE) && fresh("bat")) {
+                id = "bat"; title = "Battery health: " + Stats.health(bi);
+                body = "Your battery is reporting a problem. A power bank keeps you going until it is serviced.";
+                q = "power bank 20000mah fast charging";
+            } else if (n >= 1800 && p.getInt("sig_ram", 0) * 2 >= n && fresh("ram")) {
+                id = "ram"; title = "RAM is almost always full";
+                body = "Memory was above 90% for most of the time we checked. Closing unused apps helps; for heavy gaming, a phone with more RAM is the real fix.";
+                q = "12GB RAM smartphone gaming";
+            }
+        }
+        sugId = id;
+        sugQuery = q;
+        sugCard.setVisibility(id == null ? View.GONE : View.VISIBLE);
+        if (id != null) { sugTitle.setText(title); sugText.setText(body); }
+    }
+
+    private void link(LinearLayout c, String label, final String url) {
+        TextView t = text(label + "  ›", 15, BLUE, false);
+        t.setPadding(0, dp(10), 0, dp(10));
+        t.setOnClickListener(v -> {
+            try { startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))); } catch (Exception ignored) { }
+        });
+        c.addView(t);
     }
 
     // Switch that needs "display over other apps"; opens the permission screen when missing

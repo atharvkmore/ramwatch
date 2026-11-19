@@ -28,6 +28,10 @@ public class RamService extends Service {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Overlay overlay;
 
+    // Signals for helpful suggestions; kept in memory, saved once a minute
+    private long hotSince;
+    private int sigTicks, sigRamHigh;
+
     // FPS = frames delivered by the display per second (vsync pace); runs only while shown
     private int frames, fps;
     private long fpsStart;
@@ -121,6 +125,7 @@ public class RamService extends Service {
         Intent bat = (Stats.on(p, 1) || Stats.on(p, 3) || sb == 4
                 || (ov && (Stats.on(p, Stats.OV, 5) || Stats.on(p, Stats.OV, 6)))) ? Stats.battery(this) : null;
         setFps(ov && Stats.on(p, Stats.OV, 0));
+        trackSignals(bat, usedPct);
         if (ov) overlay.show(overlayItems(usedPct, cpu, bat), p.getInt("ov_pos", 2)); else overlay.hide();
 
         if (Stats.on(p, 0)) parts.add("RAM " + Stats.gb(avail) + " free (" + (100 - usedPct) + "%)" + (mi.lowMemory ? " ⚠" : ""));
@@ -157,6 +162,24 @@ public class RamService extends Service {
         if (p.getBoolean("sbt", false) && st != null)
             overlay.showStatus(st, p.getInt("sbt_pos", 1), p.getInt("sbt_off", 12));
         else overlay.hideStatus();
+    }
+
+    private void trackSignals(Intent bat, int usedPct) {
+        if (!BuildConfig.SUGGESTIONS || !p.getBoolean("sugg", true)) return;
+        if (bat == null) bat = Stats.battery(this);
+        long now = System.currentTimeMillis();
+        boolean hot = bat != null && Stats.batTemp(bat) >= 42;
+        if (!hot) hotSince = 0;
+        else if (hotSince == 0) hotSince = now;
+        else if (now - hotSince >= 5 * 60_000L) { p.edit().putLong("sig_hot", now).apply(); hotSince = now; }
+        sigTicks++;
+        if (usedPct >= 90) sigRamHigh++;
+        if (sigTicks >= 30) {
+            int n = p.getInt("sig_n", 0) + sigTicks, h = p.getInt("sig_ram", 0) + sigRamHigh;
+            if (n > 50000) { n /= 2; h /= 2; } // slowly forget old data
+            p.edit().putInt("sig_n", n).putInt("sig_ram", h).apply();
+            sigTicks = 0; sigRamHigh = 0;
+        }
     }
 
     private String statusText(int sb, int usedPct, long avail, int cpu, Intent bat) {
