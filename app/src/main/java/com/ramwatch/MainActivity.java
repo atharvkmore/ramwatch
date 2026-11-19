@@ -35,7 +35,7 @@ public class MainActivity extends Activity {
     private TextView toggle, vUp, vSto, vCpuTemp, vGpuLoad, vBatStat, vBatHealth, vBatV, vBatCur, vBatTech,
             vNetType, vOp, vBwD, vBwU, vRx, vTx, vWifiSig, vWifiLink, vWifiFreq, vCellSig;
     private TextView[] vCore;
-    private Switch ovSwitch;
+    private Switch ovSwitch, sbtSwitch;
     private Tile tRam, tCpu, tBat, tNet, tBatLvl, tBatTemp, tDown, tUp;
 
     private final Runnable tick = new Runnable() {
@@ -242,27 +242,31 @@ public class MainActivity extends Activity {
         LinearLayout c = card("Status bar icon");
         c.addView(text("Shows a live value next to the clock, as a small icon.", 12, DIM, false));
         radios(c, "sb", Stats.SB, 0, null);
+        c.addView(text("OnePlus, Oppo, Realme and Xiaomi show the app logo instead. Turn this on to draw the value as text in the status bar:", 12, DIM, false));
+        sbtSwitch = overlaySwitch("Show as text in status bar", "sbt");
+        c.addView(sbtSwitch);
+        c.addView(text("Text position", 13, DIM, true));
+        radios(c, "sbt_pos", new String[]{"Left", "Centre", "Right"}, 1, null);
+        final TextView offL = text("", 13, DIM, true);
+        c.addView(offL);
+        SeekBar off = new SeekBar(this);
+        off.setMax(45);
+        off.setProgress(p.getInt("sbt_off", 12));
+        off.setProgressTintList(ColorStateList.valueOf(BLUE));
+        off.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
+        offL.setText("Shift right: " + off.getProgress() + "% (move it clear of the camera and icons)");
+        off.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar s, int v, boolean u) {
+                offL.setText("Shift right: " + v + "% (move it clear of the camera and icons)");
+                p.edit().putInt("sbt_off", v).apply();
+            }
+            public void onStartTrackingTouch(SeekBar s) { }
+            public void onStopTrackingTouch(SeekBar s) { }
+        });
+        c.addView(off);
 
         c = card("Floating overlay (over games & apps)");
-        ovSwitch = new Switch(this);
-        ovSwitch.setText("Show overlay");
-        ovSwitch.setTextColor(Color.WHITE);
-        ovSwitch.setTextSize(16);
-        ovSwitch.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
-        ovSwitch.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{GREEN, 0x55FFFFFF}));
-        ovSwitch.setPadding(0, dp(8), 0, dp(8));
-        ovSwitch.setChecked(p.getBoolean("ov", false) && Overlay.allowed(this));
-        ovSwitch.setOnCheckedChangeListener((x, on) -> {
-            if (on && !Overlay.allowed(this)) {
-                startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        android.net.Uri.parse("package:" + getPackageName())));
-                p.edit().putBoolean("ov_pending", true).apply();
-                x.setChecked(false);
-                return;
-            }
-            p.edit().putBoolean("ov", on).apply();
-            if (on && !RamService.running) { p.edit().putBoolean("on", true).apply(); RamService.start(this); }
-        });
+        ovSwitch = overlaySwitch("Show overlay", "ov");
         c.addView(ovSwitch);
         c.addView(text("Position", 13, DIM, true));
         radios(c, "ov_pos", Stats.OV_POS, 2, null);
@@ -499,6 +503,30 @@ public class MainActivity extends Activity {
         }
     }
 
+    // Switch that needs "display over other apps"; opens the permission screen when missing
+    private Switch overlaySwitch(String label, final String key) {
+        Switch sw = new Switch(this);
+        sw.setText(label);
+        sw.setTextColor(Color.WHITE);
+        sw.setTextSize(16);
+        sw.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
+        sw.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}}, new int[]{GREEN, 0x55FFFFFF}));
+        sw.setPadding(0, dp(8), 0, dp(8));
+        sw.setChecked(p.getBoolean(key, false) && Overlay.allowed(this));
+        sw.setOnCheckedChangeListener((x, on) -> {
+            if (on && !Overlay.allowed(this)) {
+                p.edit().putString("ov_pending_key", key).apply();
+                startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:" + getPackageName())));
+                x.setChecked(false);
+                return;
+            }
+            p.edit().putBoolean(key, on).apply();
+            if (on && !RamService.running) { p.edit().putBoolean("on", true).apply(); RamService.start(this); }
+        });
+        return sw;
+    }
+
     private void checks(LinearLayout c, String[][] opts) {
         for (int i = 0; i < opts.length; i++) {
             final String key = opts[i][0];
@@ -519,9 +547,10 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         // Returning from the overlay-permission screen: switch it on if granted
-        if (p.getBoolean("ov_pending", false)) {
-            p.edit().putBoolean("ov_pending", false).apply();
-            if (Overlay.allowed(this)) ovSwitch.setChecked(true);
+        String pk = p.getString("ov_pending_key", null);
+        if (pk != null) {
+            p.edit().remove("ov_pending_key").apply();
+            if (Overlay.allowed(this)) ("sbt".equals(pk) ? sbtSwitch : ovSwitch).setChecked(true);
         }
         h.post(tick);
     }

@@ -97,6 +97,50 @@ final class Overlay {
         }
     }
 
+    // ---- Text label drawn in the status-bar area (for OEMs that ignore custom notification icons) ----
+    private TextView sbv;
+    private int sbCfg = -1;
+
+    void showStatus(String txt, int position, int offPct) {
+        if (!allowed(c) || txt == null) { hideStatus(); return; }
+        int cfg = position * 1000 + offPct;
+        if (sbv == null || cfg != sbCfg) {
+            hideStatus();
+            sbCfg = cfg;
+            sbv = new TextView(c);
+            sbv.setTextColor(Color.WHITE);
+            sbv.setTextSize(12);
+            sbv.setTypeface(Typeface.DEFAULT_BOLD);
+            sbv.setGravity(Gravity.CENTER_VERTICAL);
+            sbv.setSingleLine(true);
+            sbv.setShadowLayer(3, 0, 0, 0x99000000);
+            sbv.setFontFeatureSettings("tnum");
+            int id = c.getResources().getIdentifier("status_bar_height", "dimen", "android");
+            int h = id > 0 ? c.getResources().getDimensionPixelSize(id) : dp(24);
+            WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT, h,
+                    Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                            : WindowManager.LayoutParams.TYPE_PHONE,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    PixelFormat.TRANSLUCENT);
+            lp.gravity = Gravity.TOP | (position == 0 ? Gravity.START : position == 2 ? Gravity.END : Gravity.CENTER_HORIZONTAL);
+            lp.x = c.getResources().getDisplayMetrics().widthPixels * offPct / 100;
+            lp.y = 0;
+            if (Build.VERSION.SDK_INT >= 28)
+                lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            if (Build.VERSION.SDK_INT >= 31) lp.alpha = 0.8f;
+            try { wm.addView(sbv, lp); } catch (Throwable e) { sbv = null; }
+        }
+        if (sbv != null) sbv.setText(txt);
+    }
+
+    void hideStatus() {
+        if (sbv != null) { try { wm.removeView(sbv); } catch (Throwable ignored) { } }
+        sbv = null;
+        sbCfg = -1;
+    }
+
     void hide() {
         if (root != null) { try { wm.removeView(root); } catch (Throwable ignored) { } }
         root = null;

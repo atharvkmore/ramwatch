@@ -152,6 +152,23 @@ public class RamService extends Service {
             case 6: nb.setSmallIcon(icon("↓" + Stats.shortSpeed(net.down), "↑" + Stats.shortSpeed(net.up))); break;
             default: nb.setSmallIcon(R.drawable.ic_ram);
         }
+
+        String st = statusText(sb, usedPct, avail, cpu, bat);
+        if (p.getBoolean("sbt", false) && st != null)
+            overlay.showStatus(st, p.getInt("sbt_pos", 1), p.getInt("sbt_off", 12));
+        else overlay.hideStatus();
+    }
+
+    private String statusText(int sb, int usedPct, long avail, int cpu, Intent bat) {
+        switch (sb) {
+            case 1: return "RAM " + usedPct + "%";
+            case 2: return "RAM " + String.format(Locale.US, "%.1fG", avail / 1073741824.0);
+            case 3: return "CPU " + (cpu < 0 ? "--" : cpu + "%");
+            case 4: return bat == null ? null : Stats.fmt1(Stats.batTemp(bat)) + "°C";
+            case 5: return "↓" + Stats.shortSpeed(net.down) + "/s";
+            case 6: return "↓" + Stats.shortSpeed(net.down) + " ↑" + Stats.shortSpeed(net.up);
+            default: return null;
+        }
     }
 
     private ArrayList<Overlay.Item> overlayItems(int ramPct, int cpu, Intent bat) {
@@ -192,6 +209,7 @@ public class RamService extends Service {
         h.removeCallbacks(tick);
         setFps(false);
         overlay.hide();
+        overlay.hideStatus();
         unregisterReceiver(screen);
         super.onDestroy();
     }
