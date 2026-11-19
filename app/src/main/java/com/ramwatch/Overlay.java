@@ -31,9 +31,12 @@ final class Overlay {
 
     private int dp(int v) { return (int) (v * c.getResources().getDisplayMetrics().density); }
 
-    void show(ArrayList<Item> items, int position) {
+    private int cfg = -1;
+
+    void show(ArrayList<Item> items, int position, int offX, int offY) {
         if (!allowed(c) || items.isEmpty()) { hide(); return; }
-        if (root == null || position != pos) { hide(); create(position); if (root == null) return; }
+        int k = position * 1_000_000 + offX * 1000 + offY;
+        if (root == null || k != cfg) { hide(); create(position, offX, offY); if (root == null) return; cfg = k; }
         StringBuilder s = new StringBuilder();
         for (Item i : items) s.append(i.label).append('|');
         if (!s.toString().equals(sig)) { sig = s.toString(); rebuild(items); }
@@ -43,7 +46,7 @@ final class Overlay {
         }
     }
 
-    private void create(int position) {
+    private void create(int position, int offX, int offY) {
         pos = position;
         root = new LinearLayout(c);
         root.setGravity(Gravity.CENTER_VERTICAL);
@@ -62,8 +65,9 @@ final class Overlay {
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT);
         lp.gravity = Gravity.TOP | (pos == 0 ? Gravity.START : pos == 2 ? Gravity.END : Gravity.CENTER_HORIZONTAL);
-        lp.x = dp(12);
-        lp.y = dp(8);
+        android.util.DisplayMetrics dm = c.getResources().getDisplayMetrics();
+        lp.x = (pos == 1 ? 0 : dp(12)) + dm.widthPixels * offX / 100;
+        lp.y = dp(8) + dm.heightPixels * offY / 100;
         if (Build.VERSION.SDK_INT >= 28)
             lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         if (Build.VERSION.SDK_INT >= 31) lp.alpha = 0.8f; // Android 12+: lets touches pass through to the game
@@ -146,6 +150,7 @@ final class Overlay {
         root = null;
         sig = "";
         pos = -1;
+        cfg = -1;
     }
 
     static int level(float v, float warn, float bad) { return v >= bad ? BAD : v >= warn ? WARN : GOOD; }

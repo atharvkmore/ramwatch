@@ -253,29 +253,15 @@ public class MainActivity extends Activity {
         c.addView(sbtSwitch);
         c.addView(text("Text position", 13, DIM, true));
         radios(c, "sbt_pos", new String[]{"Left", "Centre", "Right"}, 1, null);
-        final TextView offL = text("", 13, DIM, true);
-        c.addView(offL);
-        SeekBar off = new SeekBar(this);
-        off.setMax(45);
-        off.setProgress(p.getInt("sbt_off", 12));
-        off.setProgressTintList(ColorStateList.valueOf(BLUE));
-        off.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
-        offL.setText("Shift right: " + off.getProgress() + "% (move it clear of the camera and icons)");
-        off.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar s, int v, boolean u) {
-                offL.setText("Shift right: " + v + "% (move it clear of the camera and icons)");
-                p.edit().putInt("sbt_off", v).apply();
-            }
-            public void onStartTrackingTouch(SeekBar s) { }
-            public void onStopTrackingTouch(SeekBar s) { }
-        });
-        c.addView(off);
+        slider(c, "sbt_off", 12, 45, "Shift right (move it clear of the camera and icons)");
 
         c = card("Floating overlay (over games & apps)");
         ovSwitch = overlaySwitch("Show overlay", "ov");
         c.addView(ovSwitch);
         c.addView(text("Position", 13, DIM, true));
         radios(c, "ov_pos", Stats.OV_POS, 2, null);
+        slider(c, "ov_x", 0, 45, "Move sideways (away from the edge; right of centre)");
+        slider(c, "ov_y", 0, 80, "Move down");
         c.addView(text("Show", 13, DIM, true));
         checks(c, Stats.OV);
         c.addView(text("FPS shows how fast the screen is refreshing. Android only lets privileged (root/Shizuku) apps read a game's exact frame rate.", 12, DIM, false));
@@ -641,6 +627,27 @@ public class MainActivity extends Activity {
             if (on && !RamService.running) { p.edit().putBoolean("on", true).apply(); RamService.start(this); }
         });
         return sw;
+    }
+
+    private void slider(LinearLayout c, final String key, int def, int max, final String label) {
+        final TextView l = text("", 13, DIM, true);
+        l.setPadding(0, dp(8), 0, 0);
+        c.addView(l);
+        SeekBar sb = new SeekBar(this);
+        sb.setMax(max);
+        sb.setProgress(p.getInt(key, def));
+        sb.setProgressTintList(ColorStateList.valueOf(BLUE));
+        sb.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
+        l.setText(label + ": " + sb.getProgress() + "%");
+        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar s, int v, boolean u) {
+                l.setText(label + ": " + v + "%");
+                p.edit().putInt(key, v).apply();
+            }
+            public void onStartTrackingTouch(SeekBar s) { }
+            public void onStopTrackingTouch(SeekBar s) { }
+        });
+        c.addView(sb);
     }
 
     private void checks(LinearLayout c, String[][] opts) {

@@ -126,7 +126,7 @@ public class RamService extends Service {
                 || (ov && (Stats.on(p, Stats.OV, 5) || Stats.on(p, Stats.OV, 6)))) ? Stats.battery(this) : null;
         setFps(ov && Stats.on(p, Stats.OV, 0));
         trackSignals(bat, usedPct);
-        if (ov) overlay.show(overlayItems(usedPct, cpu, bat), p.getInt("ov_pos", 2)); else overlay.hide();
+        if (ov) overlay.show(overlayItems(usedPct, cpu, bat), p.getInt("ov_pos", 2), p.getInt("ov_x", 0), p.getInt("ov_y", 0)); else overlay.hide();
 
         if (Stats.on(p, 0)) parts.add("RAM " + Stats.gb(avail) + " free (" + (100 - usedPct) + "%)" + (mi.lowMemory ? " ⚠" : ""));
         if (bat != null && Stats.on(p, 1)) parts.add("Battery " + Stats.batPct(bat) + "%" + (Stats.charging(bat) ? " ⚡" : ""));
