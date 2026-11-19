@@ -13,3 +13,9 @@ jobs:
       - run: cp app/build/outputs/apk/release/app-release.apk RamWatch.apk
       - uses: actions/upload-artifact@v4
         with: { name: RamWatch-apk, path: RamWatch.apk }
+      - name: APK as text (for in-chat delivery)
+        run: |
+          echo "SHA256 $(sha256sum RamWatch.apk | cut -d' ' -f1)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "APKB64START$(base64 -w0 RamWatch.apk)APKB64END" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
